@@ -1,7 +1,7 @@
 import os
 import json
 import traceback
-from flask import Flask, render_template, request, jsonify, redirect, url_for
+from flask import Flask, render_template, request, jsonify, redirect, url_for, session
 from PyPDF2 import PdfReader
 from openai import OpenAI
 import constants  # constants.py enthält openAIAPI
@@ -13,7 +13,7 @@ app.secret_key = 'Ihr_geheimer_Schlüssel'  # bitte anpassen
 client = OpenAI(api_key=constants.openAIAPI)
 
 # Verzeichnis, in dem die Benutzerdaten gespeichert werden.
-DATA_DIR = "data"
+DATA_DIR = "/home/lukas/KarteikartenProgramm/data"
 if not os.path.exists(DATA_DIR):
     os.makedirs(DATA_DIR)
 
@@ -37,6 +37,27 @@ def save_user_cards(username, cards):
     except Exception as e:
         app.logger.error("Fehler beim Speichern der Datei %s: %s", filepath, e)
 
+def get_user_credentials(username):
+    """Lädt die Zugangsdaten (z.B. Passwort) aus einer JSON-Datei für den Benutzer."""
+    filepath = os.path.join(DATA_DIR, f"{username}_auth.json")
+    if os.path.exists(filepath):
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            app.logger.error("Fehler beim Laden der Auth-Datei %s: %s", filepath, e)
+    return None
+
+def save_user_credentials(username, password):
+    """Speichert die Zugangsdaten für den Benutzer."""
+    filepath = os.path.join(DATA_DIR, f"{username}_auth.json")
+    daten = {"username": username, "password": password}  # In einer echten App unbedingt hashen!
+    try:
+        with open(filepath, "w", encoding="utf-8") as f:
+            json.dump(daten, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        app.logger.error("Fehler beim Speichern der Auth-Datei %s: %s", filepath, e)
+
 def bereinige_generierten_text(text):
     """
     Entfernt Markdown-Code-Fences (z. B. ```json ... ```) sowie
@@ -53,7 +74,7 @@ def bereinige_generierten_text(text):
     return text
 
 # ---------------------------
-# Routen zur Benutzerverwaltung
+# Routen zur Benutzerverwaltung und Authentifizierung
 # ---------------------------
 
 @app.route("/", methods=["GET"])
@@ -64,30 +85,55 @@ def select_user():
     """
     users = []
     for filename in os.listdir(DATA_DIR):
-        if filename.endswith(".json"):
-            users.append(filename[:-5])
+        if filename.endswith("_auth.json"):
+            users.append(filename[:-10])  # entfernt _auth.json
     return render_template("user_select.html", users=users)
 
 @app.route("/create_user", methods=["POST"])
 def create_user():
     daten = request.get_json()
     username = daten.get("username", "").strip()
-    if not username:
-        return jsonify({"error": "Kein Benutzername übermittelt."}), 400
-    filepath = os.path.join(DATA_DIR, f"{username}.json")
-    if not os.path.exists(filepath):
-        save_user_cards(username, [])
+    password = daten.get("password", "").strip()
+    if not username or not password:
+        return jsonify({"error": "Benutzername und Passwort müssen übermittelt werden."}), 400
+    # Überprüfe, ob Benutzer schon existiert
+    if get_user_credentials(username) is not None:
+        return jsonify({"error": "Benutzer existiert bereits."}), 400
+    # Erstelle leere Karten-Datei und speichere Zugangsdaten
+    save_user_cards(username, [])
+    save_user_credentials(username, password)
     return jsonify({"user": username})
 
-# ---------------------------
-# Hauptrouten der Karteikarten-App
-# ---------------------------
+@app.route("/login", methods=["POST"])
+def login():
+    daten = request.get_json()
+    username = daten.get("username", "").strip()
+    password = daten.get("password", "").strip()
+    creds = get_user_credentials(username)
+    if creds is None or creds.get("password") != password:
+        return jsonify({"error": "Ungültige Anmeldedaten."}), 400
+    session["user"] = username
+    return jsonify({"user": username})
+
+# Routen, die einen angemeldeten Benutzer erfordern:
+def login_required(f):
+    from functools import wraps
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if "user" not in session:
+            return redirect(url_for("select_user"))
+        return f(*args, **kwargs)
+    return decorated_function
 
 @app.route("/app/<username>", methods=["GET"])
+@login_required
 def main_app(username):
     """
     Zeigt das Hauptinterface (main.html) für den angegebenen Benutzer an.
     """
+    # Für zusätzliche Sicherheit prüfen wir, ob der angemeldete User passt.
+    if session.get("user") != username:
+        return redirect(url_for("select_user"))
     cards = get_user_cards(username)
     return render_template("main.html", username=username, cards=json.dumps(cards, ensure_ascii=False, indent=2))
 
@@ -159,8 +205,6 @@ def manual_card():
     
     save_user_cards(username, karten)
     return jsonify({"cards": karten})
-
-
 
 @app.route("/upload", methods=["POST"])
 def upload_pdf():
@@ -263,8 +307,5 @@ def upload_pdf():
         return jsonify({"error": str(e)}), 500
 
 
-
-
-
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(host="0.0.0.0", port=5000, debug=True)

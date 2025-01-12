@@ -6,62 +6,83 @@
   <style>
     body {
       font-family: Arial, sans-serif;
+      background: #f7f9fc;
+      margin: 0;
       padding: 40px;
     }
-    input[type="text"] {
-      padding: 8px;
-      margin: 10px 0;
-      width: 200px;
+    h1, h2 {
+      color: #2c3e50;
+    }
+    .container {
+      max-width: 500px;
+      margin: auto;
+      background: #fff;
+      padding: 20px 30px;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    input[type="text"],
+    input[type="password"],
+    select {
+      width: 100%;
+      padding: 10px;
+      margin: 10px 0 20px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
       box-sizing: border-box;
     }
     button.action {
-      padding: 10px 15px;
+      padding: 12px 20px;
       background-color: #27ae60;
       color: #fff;
       border: none;
       border-radius: 4px;
       cursor: pointer;
+      width: 100%;
+      font-size: 1em;
+      transition: background-color 0.3s;
     }
     button.action:hover {
       background-color: #219150;
     }
-    select {
-      padding: 8px;
-      width: 220px;
-      box-sizing: border-box;
-      margin-bottom: 10px;
+    .section {
+      margin-bottom: 30px;
     }
   </style>
 </head>
 <body>
-  <h1>Benutzer auswählen / anlegen</h1>
-  <div>
-    <h2>Neuen Benutzer anlegen</h2>
-    <input type="text" id="newUserName" placeholder="Neuer Benutzername">
-    <button id="createUserBtn" class="action">Benutzer erstellen</button>
-  </div>
-  <br>
-  <div>
-    <h2>Bestehenden Benutzer auswählen</h2>
-    <select id="userSelect">
-      {% for user in users %}
-        <option value="{{ user }}">{{ user }}</option>
-      {% endfor %}
-    </select>
-    <button id="selectUserBtn" class="action">Benutzer auswählen</button>
+  <div class="container">
+    <h1>Willkommen zur Karteikarten App</h1>
+    <div class="section">
+      <h2>Neuen Benutzer anlegen</h2>
+      <input type="text" id="newUserName" placeholder="Neuer Benutzername">
+      <input type="password" id="newUserPassword" placeholder="Passwort">
+      <button id="createUserBtn" class="action">Benutzer erstellen</button>
+    </div>
+    <div class="section">
+      <h2>Bestehenden Benutzer auswählen &amp; anmelden</h2>
+      <select id="userSelect">
+        {% for user in users %}
+          <option value="{{ user }}">{{ user }}</option>
+        {% endfor %}
+      </select>
+      <input type="password" id="userPassword" placeholder="Passwort">
+      <button id="selectUserBtn" class="action">Anmelden</button>
+    </div>
   </div>
 
   <script>
     document.getElementById("createUserBtn").addEventListener("click", () => {
       const newUser = document.getElementById("newUserName").value.trim();
-      if (!newUser) {
-        alert("Bitte einen Benutzernamen eingeben.");
+      const newPass = document.getElementById("newUserPassword").value.trim();
+      if (!newUser || !newPass) {
+        alert("Bitte Benutzername und Passwort eingeben.");
         return;
       }
       fetch("/create_user", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: newUser })
+        body: JSON.stringify({ username: newUser, password: newPass })
       })
       .then(response => response.json())
       .then(data => {
@@ -72,6 +93,8 @@
           option.textContent = data.user;
           select.appendChild(option);
           document.getElementById("newUserName").value = "";
+          document.getElementById("newUserPassword").value = "";
+          alert("Benutzer erfolgreich erstellt!");
         } else {
           alert("Fehler: " + data.error);
         }
@@ -81,11 +104,24 @@
     document.getElementById("selectUserBtn").addEventListener("click", () => {
       const select = document.getElementById("userSelect");
       const selectedUser = select.value;
-      if (!selectedUser) {
-        alert("Bitte wählen Sie einen Benutzer aus.");
+      const password = document.getElementById("userPassword").value.trim();
+      if (!selectedUser || !password) {
+        alert("Bitte wählen Sie einen Benutzer aus und geben Sie das Passwort ein.");
         return;
       }
-      window.location.href = "/app/" + encodeURIComponent(selectedUser);
+      fetch("/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: selectedUser, password: password })
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (!data.error) {
+          window.location.href = "/app/" + encodeURIComponent(data.user);
+        } else {
+          alert("Fehler: " + data.error);
+        }
+      });
     });
   </script>
 </body>

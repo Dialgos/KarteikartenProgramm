@@ -4,163 +4,265 @@
   <meta charset="UTF-8">
   <title>Karteikarten App - Benutzer: {{ username }}</title>
   <style>
-    /* Grundlegendes Layout */
-    body {
+    /* Reset */
+    * {
       margin: 0;
-      font-family: Arial, sans-serif;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
       display: flex;
       height: 100vh;
+      background-color: #f4f6f8;
     }
     /* Seitenleiste */
     .sidebar {
-      width: 240px;
+      width: 260px;
       background-color: #2c3e50;
       color: #ecf0f1;
       padding: 20px;
-      box-sizing: border-box;
+      position: relative;
     }
     .sidebar h2 {
-      font-size: 1.3em;
-      margin-top: 0;
+      margin-bottom: 20px;
+      font-size: 1.5em;
     }
-    .sidebar button {
+    .sidebar button,
+    .sidebar input[type="file"] {
       width: 100%;
       padding: 10px;
-      margin: 10px 0;
-      background-color: #34495e;
+      margin-bottom: 10px;
       border: none;
-      color: #ecf0f1;
-      cursor: pointer;
+      border-radius: 4px;
       font-size: 1em;
+      cursor: pointer;
+    }
+    .sidebar button {
+      background-color: #34495e;
+      color: #ecf0f1;
     }
     .sidebar button:hover {
       background-color: #3d566e;
     }
-    /* Hauptbereich */
-    .main {
-      flex-grow: 1;
-      padding: 20px;
-      overflow-y: auto;
+    .sidebar input[type="file"] {
+      background-color: #fff;
+      color: #2c3e50;
     }
-    .hidden {
-      display: none;
-    }
-    input[type="text"],
-    textarea {
-      width: 100%;
-      padding: 8px;
-      margin: 5px 0 15px;
-      border: 1px solid #ccc;
-      border-radius: 4px;
-      box-sizing: border-box;
-    }
-    button.action {
-      padding: 10px 15px;
+    .notification {
       background-color: #27ae60;
       color: #fff;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-    }
-    button.action:hover {
-      background-color: #219150;
-    }
-    /* Übersichtsgruppen & Karten */
-    .group {
-      margin-bottom: 15px;
-      border: 1px solid #ccc;
-      border-radius: 4px;
-      overflow: hidden;
-    }
-    .group-title {
-      background-color: #ddd;
-      padding: 8px 12px;
-      cursor: pointer;
-      font-weight: bold;
-      font-size: 1.05em;
-    }
-    .group-content {
       padding: 10px;
-      display: none;
-      background-color: #fdfdfd;
-    }
-    .card {
-      border: 1px solid #bbb;
-      padding: 10px;
-      margin-bottom: 8px;
       border-radius: 4px;
-      background-color: #fafafa;
-    }
-    .card .card-question {
-      font-weight: bold;
-      margin-bottom: 5px;
-    }
-    .card .card-solution {
-      display: none;
-      margin-top: 5px;
-      font-style: italic;
-      background-color: #eef;
-      padding: 8px;
-      border-radius: 4px;
-    }
-    .card .card-formula {
-      display: none;
-      margin-top: 5px;
-      font-style: italic;
-      background-color: #ffe;
-      padding: 8px;
-      border-radius: 4px;
-      border: 1px dashed #cca;
-    }
-    .card .card-buttons {
-      text-align: right;
-      margin-top: 8px;
-    }
-    .card .card-buttons button {
-      padding: 5px 10px;
-      margin-left: 5px;
-      font-size: 0.9em;
-      cursor: pointer;
-      border: none;
-      border-radius: 3px;
-    }
-    .edit-btn { background-color: #f1c40f; }
-    .delete-btn { background-color: #e74c3c; color: #fff; }
-    .toggle-solution-btn {
-      background-color: #3498db;
-      color: #fff;
-    }
-    .toggle-formula-btn {
-      background-color: #8e44ad;
-      color: #fff;
-    }
-    /* Benachrichtigung */
-    .notification {
-      background-color: #e0ffe0;
-      color: #006600;
-      padding: 10px;
-      border: 1px solid #00aa00;
-      border-radius: 4px;
-      margin-bottom: 10px;
       text-align: center;
+      margin-top: 10px;
+      font-weight: bold;
+      display: none;
     }
-    /* Lade-Spinner */
     .spinner {
-      border: 6px solid #f3f3f3;
-      border-top: 6px solid #3498db;
+      border: 5px solid #f3f3f3;
+      border-top: 5px solid #3498db;
       border-radius: 50%;
       width: 40px;
       height: 40px;
       animation: spin 1s linear infinite;
-      margin: auto;
+      margin: 10px auto;
       display: none;
     }
     @keyframes spin {
       0% { transform: rotate(0deg); }
       100% { transform: rotate(360deg); }
     }
+    /* Hauptbereich */
+    .main {
+      flex-grow: 1;
+      padding: 20px;
+      overflow-y: auto;
+      position: relative;
+    }
+    .main h1, .main h2 {
+      margin-bottom: 20px;
+      color: #2c3e50;
+    }
+    form label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: bold;
+    }
+    form textarea {
+      width: 100%;
+      padding: 10px;
+      margin-bottom: 15px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      resize: vertical;
+    }
+    form button.action {
+      background-color: #27ae60;
+      border: none;
+      padding: 10px 20px;
+      color: #fff;
+      font-size: 1em;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+    form button.action:hover {
+      background-color: #219150;
+    }
+    /* Karteikarten Übersicht (Edit-Modus) */
+    .group {
+      margin-bottom: 20px;
+      background-color: #fff;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      overflow: hidden;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+    }
+    .group-title {
+      background-color: #3498db;
+      color: #fff;
+      padding: 10px 15px;
+      font-size: 1.1em;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+    .group-title:hover {
+      background-color: #2980b9;
+    }
+    .group-content {
+      padding: 15px;
+      display: none;
+    }
+    .card {
+      border: 1px solid #eee;
+      padding: 15px;
+      margin-bottom: 15px;
+      border-radius: 4px;
+      background-color: #f9f9f9;
+      transition: transform 0.2s;
+    }
+    .card:hover {
+      transform: scale(1.02);
+    }
+    .card .card-question {
+      font-weight: bold;
+      margin-bottom: 10px;
+      font-size: 1.05em;
+    }
+    .card .card-solution,
+    .card .card-formula {
+      display: none;
+      margin-top: 10px;
+      padding: 10px;
+      border-radius: 4px;
+      background-color: #eef;
+      font-style: italic;
+      line-height: 1.4;
+    }
+    .card .card-formula {
+      background-color: #fff3cd;
+      border: 1px dashed #ffeeba;
+    }
+    .card .card-buttons {
+      text-align: right;
+      margin-top: 10px;
+    }
+    .card .card-buttons button {
+      padding: 7px 12px;
+      margin-left: 5px;
+      font-size: 0.9em;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+    .edit-btn { background-color: #f1c40f; }
+    .edit-btn:hover { background-color: #d4ac0d; }
+    .delete-btn { background-color: #e74c3c; color: #fff; }
+    .delete-btn:hover { background-color: #c0392b; }
+    .toggle-solution-btn { background-color: #3498db; color: #fff; }
+    .toggle-solution-btn:hover { background-color: #2874a6; }
+    .toggle-formula-btn { background-color: #8e44ad; color: #fff; }
+    .toggle-formula-btn:hover { background-color: #6c3483; }
+    /* Flashcard/Review-Modus */
+    .flashcard {
+      background-color: #fff;
+      border: 2px solid #3498db;
+      border-radius: 10px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+      padding: 30px;
+      max-width: 600px;
+      margin: 40px auto;
+      text-align: center;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+      position: relative;
+    }
+    .flashcard:hover {
+      transform: scale(1.03);
+      box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+    }
+    .flashcard .question {
+      font-size: 1.4em;
+      font-weight: bold;
+      margin-bottom: 20px;
+    }
+    .flashcard .answer,
+    .flashcard .formula {
+      display: none;
+      margin-top: 20px;
+      font-size: 1.2em;
+      font-style: italic;
+      background-color: #eef;
+      padding: 20px;
+      border-radius: 4px;
+      border: 1px solid #ddd;
+    }
+    /* Schöne, größere Buttons für die Flashcards */
+    #showAnswerBtn, #nextBtn {
+      padding: 12px 25px;
+      font-size: 1.1em;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background-color 0.3s;
+      background-color: #3498db;
+      color: #fff;
+    }
+    #showAnswerBtn:hover, #nextBtn:hover {
+      background-color: #2874a6;
+    }
+    /* Tutorial (unten rechts) */
+    .tutorial {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: rgba(0,0,0,0.7);
+      color: #fff;
+      padding: 10px 15px;
+      border-radius: 4px;
+      font-size: 0.9em;
+      line-height: 1.4;
+    }
+    /* Button zurück zur Benutzer-Auswahl */
+    .back-btn {
+      position: absolute;
+      bottom: 20px;
+      left: 20px;
+      background-color: #e67e22;
+      border: none;
+      padding: 10px 15px;
+      color: #fff;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+    .back-btn:hover {
+      background-color: #d35400;
+    }
   </style>
-  <!-- MathJax zur Darstellung mathematischer Gleichungen -->
+  <!-- MathJax zur Darstellung von LaTeX-Gleichungen -->
   <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
   <script id="MathJax-script" async
           src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js">
@@ -170,8 +272,8 @@
   <!-- Seitenleiste -->
   <div class="sidebar">
     <h2>Benutzer: {{ username }}</h2>
-    <button id="editModeBtn">Neue Karten erstellen</button>
-    <button id="reviewModeBtn">Karten abfragen</button>
+    <button id="editModeBtn">Karten bearbeiten/erstellen</button>
+    <button id="reviewModeBtn">Karteikarten abfragen</button>
     <hr>
     <!-- PDF Upload -->
     <h2>PDF Upload</h2>
@@ -180,30 +282,42 @@
     <div id="spinner" class="spinner"></div>
     <!-- Notification -->
     <div id="notification" class="notification hidden"></div>
+    <!-- Button zurück zur Benutzer-Auswahl -->
+    <button class="back-btn" onclick="window.location.href='/'">Benutzer wechseln</button>
   </div>
 
   <!-- Hauptbereich -->
   <div class="main">
-    <!-- Erstellen/Bearbeiten von Karten -->
+    <!-- Erstellen/Bearbeiten von Karteikarten -->
     <div id="editSection">
-      <h1>Neue Karte erstellen</h1>
+      <h1>Karte erstellen</h1>
       <form id="cardForm">
         <label for="question">Frage:</label>
         <textarea id="question" placeholder="Geben Sie hier die Frage ein..." required></textarea>
         <label for="solution">Lösung:</label>
         <textarea id="solution" placeholder="Geben Sie hier die Lösung ein..." required></textarea>
+        <!-- Optional: Ein zusätzliches Feld für Formel -->
         <button type="submit" class="action">Karte speichern</button>
       </form>
       <h2>Übersicht: Karteikarten nach Vorlesung</h2>
       <div id="cardsOverview"></div>
     </div>
 
-    <!-- Karten abfragen -->
+    <!-- Karten abfragen (Review-Modus) -->
     <div id="reviewSection" class="hidden">
-      <h1>Karten abfragen</h1>
-      <div id="singleCard"></div>
-      <button id="nextBtn" class="action">Weiter</button>
+      <h1>Karteikarten abfragen</h1>
+      <div id="flashcardContainer"></div>
+      <button id="nextBtn" class="action">Nächste Karte</button>
     </div>
+  </div>
+
+  <!-- Tutorial (Tastaturkürzel) -->
+  <div class="tutorial">
+    <strong>Tastaturkürzel:</strong><br>
+    [A] - Antwort anzeigen/ausblenden<br>
+    [N] - Nächste Karte<br>
+    [E] - Wechsel in den Edit-Modus<br>
+    [R] - Wechsel in den Review-Modus
   </div>
 
   <script>
@@ -213,7 +327,7 @@
     let currentReviewIndex = 0;
     const currentUser = "{{ username }}";
 
-    // Gruppiert Karten nach dem Vorlesungstitel (lecture)
+    // Gruppiert Karten nach Vorlesungstitel (lecture)
     function groupCardsByLecture(cards) {
       const groups = {};
       cards.forEach(card => {
@@ -226,7 +340,7 @@
       return groups;
     }
 
-    // Rendert die Gruppenübersicht mit expandierbaren Bereichen
+    // Rendern der Kartenübersicht (Edit-Modus)
     function renderCardsOverview() {
       const overview = document.getElementById("cardsOverview");
       overview.innerHTML = "";
@@ -237,7 +351,6 @@
         const groupDiv = document.createElement("div");
         groupDiv.className = "group";
 
-        // Gruppenüberschrift
         const titleDiv = document.createElement("div");
         titleDiv.className = "group-title";
         titleDiv.textContent = lecture + " (" + groups[lecture].length + " Karteikarten)";
@@ -247,13 +360,11 @@
         });
         groupDiv.appendChild(titleDiv);
 
-        // Gruppeninhalt
         const contentDiv = document.createElement("div");
         contentDiv.className = "group-content";
         contentDiv.style.display = "none";
 
         groups[lecture].forEach(card => {
-          // Ermittle den globalen Index
           const globalIndex = cards.findIndex(c =>
             c.question === card.question &&
             c.solution === card.solution &&
@@ -273,38 +384,37 @@
               ${ card.formula ? `<button class="toggle-formula-btn">Formel anzeigen</button>` : "" }
             </div>
           `;
-          // Standardmäßig ausblenden
           const solDiv = cardDiv.querySelector(".card-solution");
           solDiv.style.display = "none";
           if(cardDiv.querySelector(".card-formula")){
             cardDiv.querySelector(".card-formula").style.display = "none";
           }
-
-          // Toggle-Lösung ein-/ausblenden
-          cardDiv.querySelector(".toggle-solution-btn").addEventListener("click", () => {
+          
+          cardDiv.querySelector(".toggle-solution-btn").addEventListener("click", (e) => {
+            e.stopPropagation();
             solDiv.style.display = solDiv.style.display === "none" ? "block" : "none";
             MathJax.typeset();
           });
-          
-          // Toggle-Formel (falls vorhanden)
+
           if(cardDiv.querySelector(".toggle-formula-btn")){
             const formDiv = cardDiv.querySelector(".card-formula");
             formDiv.style.display = "none";
-            cardDiv.querySelector(".toggle-formula-btn").addEventListener("click", () => {
+            cardDiv.querySelector(".toggle-formula-btn").addEventListener("click", (e) => {
+              e.stopPropagation();
               formDiv.style.display = formDiv.style.display === "none" ? "block" : "none";
               MathJax.typeset();
             });
           }
-          
-          // Bearbeiten
-          cardDiv.querySelector(".edit-btn").addEventListener("click", () => {
+
+          cardDiv.querySelector(".edit-btn").addEventListener("click", (e) => {
+            e.stopPropagation();
             document.getElementById("question").value = card.question;
             document.getElementById("solution").value = card.solution;
             document.getElementById("cardForm").dataset.editIndex = globalIndex;
           });
 
-          // Löschen
-          cardDiv.querySelector(".delete-btn").addEventListener("click", () => {
+          cardDiv.querySelector(".delete-btn").addEventListener("click", (e) => {
+            e.stopPropagation();
             if (confirm("Sind Sie sicher, dass Sie diese Karte löschen möchten?")) {
               const idx = cards.findIndex(c =>
                 c.question === card.question &&
@@ -329,7 +439,7 @@
               }
             }
           });
-          
+
           contentDiv.appendChild(cardDiv);
         });
         groupDiv.appendChild(contentDiv);
@@ -338,6 +448,7 @@
       MathJax.typeset();
     }
 
+    // Laden der Karten vom Server (Edit-Modus)
     function loadCards() {
       fetch(`/load_cards?user=${encodeURIComponent(currentUser)}`)
         .then(response => response.json())
@@ -351,6 +462,7 @@
         });
     }
 
+    // Formular zum Hinzufügen/Bearbeiten (Edit-Modus)
     document.getElementById("cardForm").addEventListener("submit", function(e) {
       e.preventDefault();
       const questionEl = document.getElementById("question");
@@ -388,67 +500,105 @@
     function showNotification(message) {
       const notif = document.getElementById("notification");
       notif.textContent = message;
-      notif.classList.remove("hidden");
-      setTimeout(() => { notif.classList.add("hidden"); }, 3000);
+      notif.style.display = "block";
+      setTimeout(() => { notif.style.display = "none"; }, 3000);
     }
 
-    document.getElementById("editModeBtn").addEventListener("click", () => {
-      document.getElementById("editSection").classList.remove("hidden");
-      document.getElementById("reviewSection").classList.add("hidden");
-    });
-
-    document.getElementById("reviewModeBtn").addEventListener("click", () => {
-      document.getElementById("editSection").classList.add("hidden");
-      document.getElementById("reviewSection").classList.remove("hidden");
-      startReview();
-    });
-
+    // Flashcard-/Review-Modus
     function startReview() {
       if (cards.length === 0) {
-        document.getElementById("singleCard").innerHTML = "<p>Keine Karten vorhanden. Bitte erstellen Sie zuerst einige.</p>";
+        document.getElementById("flashcardContainer").innerHTML = "<p>Keine Karten vorhanden. Bitte erstellen Sie zuerst einige.</p>";
         return;
       }
       reviewCards = cards.slice().sort(() => Math.random() - 0.5);
       currentReviewIndex = 0;
-      renderReviewCard();
+      renderFlashcard();
     }
 
-    function renderReviewCard() {
-      const container = document.getElementById("singleCard");
+    function renderFlashcard() {
+      const container = document.getElementById("flashcardContainer");
       container.innerHTML = "";
       if (currentReviewIndex >= reviewCards.length) {
-        container.innerHTML = "<p>Alle Karten wurden durchgegangen!</p>";
+        container.innerHTML = "<p>Alle Karteikarten wurden durchgegangen!</p>";
         return;
       }
       const card = reviewCards[currentReviewIndex];
-      const cardDiv = document.createElement("div");
-      cardDiv.className = "card";
-      cardDiv.innerHTML = `
-        <p class="card-question"><strong>Frage:</strong> ${card.question}</p>
-        <div class="card-solution"><strong>Lösung:</strong> ${card.solution}</div>
-        ${ card.formula ? `<div class="card-formula"><strong>Formel:</strong> <span class="mathjax">\\( ${card.formula} \\)</span></div>` : "" }
-        <p><em>Vorlesung: ${card.lecture || currentUser}</em></p>
+      const flashcard = document.createElement("div");
+      flashcard.className = "flashcard";
+      flashcard.innerHTML = `
+        <div class="question">${card.question}</div>
+        <button id="showAnswerBtn" class="action" style="margin-top:20px;">Antwort anzeigen</button>
+        <div class="answer">${card.solution}</div>
+        ${ card.formula ? `<div class="formula"><strong>Formel:</strong> <span class="mathjax">\\( ${card.formula} \\)</span></div>` : "" }
+        <p style="margin-top:15px;"><em>Vorlesung: ${card.lecture || currentUser}</em></p>
       `;
-      const solDiv = cardDiv.querySelector(".card-solution");
-      solDiv.style.display = "none";
-      if(cardDiv.querySelector(".card-formula")){
-        cardDiv.querySelector(".card-formula").style.display = "none";
+      flashcard.querySelector(".answer").style.display = "none";
+      if(flashcard.querySelector(".formula")){
+        flashcard.querySelector(".formula").style.display = "none";
       }
-      cardDiv.addEventListener("click", function() {
-        solDiv.style.display = solDiv.style.display === "none" ? "block" : "none";
-        if(cardDiv.querySelector(".card-formula")){
-          let fDiv = cardDiv.querySelector(".card-formula");
-          fDiv.style.display = fDiv.style.display === "none" ? "block" : "none";
+      flashcard.querySelector("#showAnswerBtn").addEventListener("click", (e) => {
+        e.stopPropagation();
+        const answerDiv = flashcard.querySelector(".answer");
+        answerDiv.style.display = answerDiv.style.display === "none" ? "block" : "none";
+        if(flashcard.querySelector(".formula")){
+          const formulaDiv = flashcard.querySelector(".formula");
+          formulaDiv.style.display = formulaDiv.style.display === "none" ? "block" : "none";
         }
         MathJax.typeset();
       });
-      container.appendChild(cardDiv);
+      flashcard.addEventListener("click", () => {
+        const answerDiv = flashcard.querySelector(".answer");
+        answerDiv.style.display = answerDiv.style.display === "none" ? "block" : "none";
+        if(flashcard.querySelector(".formula")){
+          const formulaDiv = flashcard.querySelector(".formula");
+          formulaDiv.style.display = formulaDiv.style.display === "none" ? "block" : "none";
+        }
+        MathJax.typeset();
+      });
+      container.appendChild(flashcard);
       MathJax.typeset();
     }
 
     document.getElementById("nextBtn").addEventListener("click", () => {
       currentReviewIndex++;
-      renderReviewCard();
+      renderFlashcard();
+    });
+
+    // Umschalten zwischen Edit-Modus und Review-Modus
+    document.getElementById("editModeBtn").addEventListener("click", () => {
+      document.getElementById("editSection").style.display = "block";
+      document.getElementById("reviewSection").style.display = "none";
+    });
+
+    document.getElementById("reviewModeBtn").addEventListener("click", () => {
+      document.getElementById("editSection").style.display = "none";
+      document.getElementById("reviewSection").style.display = "block";
+      if (!document.getElementById("flashcardContainer")) {
+        const container = document.createElement("div");
+        container.id = "flashcardContainer";
+        document.getElementById("reviewSection").insertBefore(container, document.getElementById("nextBtn"));
+      }
+      startReview();
+    });
+
+    // Tastatursteuerung
+    document.addEventListener("keydown", (e) => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+      switch(e.key.toLowerCase()){
+        case 'a': // Antwort anzeigen
+          let btn = document.getElementById("showAnswerBtn");
+          if(btn) btn.click();
+          break;
+        case 'n': // Nächste Karte
+          document.getElementById("nextBtn").click();
+          break;
+        case 'e': // Edit-Modus
+          document.getElementById("editModeBtn").click();
+          break;
+        case 'r': // Review-Modus
+          document.getElementById("reviewModeBtn").click();
+          break;
+      }
     });
 
     // PDF-Upload mit Spinner und Notification
@@ -487,7 +637,7 @@
       });
     });
 
-    // Beim Laden der Seite: Karten laden und Übersicht anzeigen.
+    // Beim Laden der Seite: Karten laden und Übersicht anzeigen (Edit-Modus)
     loadCards();
   </script>
 </body>
