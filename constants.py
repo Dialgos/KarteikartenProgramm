@@ -1,0 +1,1 @@
+openAIAPI = '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'
