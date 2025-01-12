@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <title>Benutzer auswählen / anlegen</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 40px;
+    }
+    input[type="text"] {
+      padding: 8px;
+      margin: 10px 0;
+      width: 200px;
+      box-sizing: border-box;
+    }
+    button.action {
+      padding: 10px 15px;
+      background-color: #27ae60;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    button.action:hover {
+      background-color: #219150;
+    }
+    select {
+      padding: 8px;
+      width: 220px;
+      box-sizing: border-box;
+      margin-bottom: 10px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Benutzer auswählen / anlegen</h1>
+  <div>
+    <h2>Neuen Benutzer anlegen</h2>
+    <input type="text" id="newUserName" placeholder="Neuer Benutzername">
+    <button id="createUserBtn" class="action">Benutzer erstellen</button>
+  </div>
+  <br>
+  <div>
+    <h2>Bestehenden Benutzer auswählen</h2>
+    <select id="userSelect">
+      {% for user in users %}
+        <option value="{{ user }}">{{ user }}</option>
+      {% endfor %}
+    </select>
+    <button id="selectUserBtn" class="action">Benutzer auswählen</button>
+  </div>
+
+  <script>
+    document.getElementById("createUserBtn").addEventListener("click", () => {
+      const newUser = document.getElementById("newUserName").value.trim();
+      if (!newUser) {
+        alert("Bitte einen Benutzernamen eingeben.");
+        return;
+      }
+      fetch("/create_user", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: newUser })
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (!data.error) {
+          const select = document.getElementById("userSelect");
+          const option = document.createElement("option");
+          option.value = data.user;
+          option.textContent = data.user;
+          select.appendChild(option);
+          document.getElementById("newUserName").value = "";
+        } else {
+          alert("Fehler: " + data.error);
+        }
+      });
+    });
+
+    document.getElementById("selectUserBtn").addEventListener("click", () => {
+      const select = document.getElementById("userSelect");
+      const selectedUser = select.value;
+      if (!selectedUser) {
+        alert("Bitte wählen Sie einen Benutzer aus.");
+        return;
+      }
+      window.location.href = "/app/" + encodeURIComponent(selectedUser);
+    });
+  </script>
+</body>
+</html>

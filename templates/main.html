@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <title>Karteikarten App - Benutzer: {{ username }}</title>
+  <style>
+    /* Grundlegendes Layout */
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      display: flex;
+      height: 100vh;
+    }
+    /* Seitenleiste */
+    .sidebar {
+      width: 240px;
+      background-color: #2c3e50;
+      color: #ecf0f1;
+      padding: 20px;
+      box-sizing: border-box;
+    }
+    .sidebar h2 {
+      font-size: 1.3em;
+      margin-top: 0;
+    }
+    .sidebar button {
+      width: 100%;
+      padding: 10px;
+      margin: 10px 0;
+      background-color: #34495e;
+      border: none;
+      color: #ecf0f1;
+      cursor: pointer;
+      font-size: 1em;
+    }
+    .sidebar button:hover {
+      background-color: #3d566e;
+    }
+    /* Hauptbereich */
+    .main {
+      flex-grow: 1;
+      padding: 20px;
+      overflow-y: auto;
+    }
+    .hidden {
+      display: none;
+    }
+    input[type="text"],
+    textarea {
+      width: 100%;
+      padding: 8px;
+      margin: 5px 0 15px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      box-sizing: border-box;
+    }
+    button.action {
+      padding: 10px 15px;
+      background-color: #27ae60;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    button.action:hover {
+      background-color: #219150;
+    }
+    /* Übersichtsgruppen & Karten */
+    .group {
+      margin-bottom: 15px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .group-title {
+      background-color: #ddd;
+      padding: 8px 12px;
+      cursor: pointer;
+      font-weight: bold;
+      font-size: 1.05em;
+    }
+    .group-content {
+      padding: 10px;
+      display: none;
+      background-color: #fdfdfd;
+    }
+    .card {
+      border: 1px solid #bbb;
+      padding: 10px;
+      margin-bottom: 8px;
+      border-radius: 4px;
+      background-color: #fafafa;
+    }
+    .card .card-question {
+      font-weight: bold;
+      margin-bottom: 5px;
+    }
+    .card .card-solution {
+      display: none;
+      margin-top: 5px;
+      font-style: italic;
+      background-color: #eef;
+      padding: 8px;
+      border-radius: 4px;
+    }
+    .card .card-formula {
+      display: none;
+      margin-top: 5px;
+      font-style: italic;
+      background-color: #ffe;
+      padding: 8px;
+      border-radius: 4px;
+      border: 1px dashed #cca;
+    }
+    .card .card-buttons {
+      text-align: right;
+      margin-top: 8px;
+    }
+    .card .card-buttons button {
+      padding: 5px 10px;
+      margin-left: 5px;
+      font-size: 0.9em;
+      cursor: pointer;
+      border: none;
+      border-radius: 3px;
+    }
+    .edit-btn { background-color: #f1c40f; }
+    .delete-btn { background-color: #e74c3c; color: #fff; }
+    .toggle-solution-btn {
+      background-color: #3498db;
+      color: #fff;
+    }
+    .toggle-formula-btn {
+      background-color: #8e44ad;
+      color: #fff;
+    }
+    /* Benachrichtigung */
+    .notification {
+      background-color: #e0ffe0;
+      color: #006600;
+      padding: 10px;
+      border: 1px solid #00aa00;
+      border-radius: 4px;
+      margin-bottom: 10px;
+      text-align: center;
+    }
+    /* Lade-Spinner */
+    .spinner {
+      border: 6px solid #f3f3f3;
+      border-top: 6px solid #3498db;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+      margin: auto;
+      display: none;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
+  <!-- MathJax zur Darstellung mathematischer Gleichungen -->
+  <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+  <script id="MathJax-script" async
+          src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js">
+  </script>
+</head>
+<body>
+  <!-- Seitenleiste -->
+  <div class="sidebar">
+    <h2>Benutzer: {{ username }}</h2>
+    <button id="editModeBtn">Neue Karten erstellen</button>
+    <button id="reviewModeBtn">Karten abfragen</button>
+    <hr>
+    <!-- PDF Upload -->
+    <h2>PDF Upload</h2>
+    <input type="file" id="pdfInput" accept="application/pdf">
+    <button id="uploadPdfBtn" class="action">PDF Hochladen</button>
+    <div id="spinner" class="spinner"></div>
+    <!-- Notification -->
+    <div id="notification" class="notification hidden"></div>
+  </div>
+
+  <!-- Hauptbereich -->
+  <div class="main">
+    <!-- Erstellen/Bearbeiten von Karten -->
+    <div id="editSection">
+      <h1>Neue Karte erstellen</h1>
+      <form id="cardForm">
+        <label for="question">Frage:</label>
+        <textarea id="question" placeholder="Geben Sie hier die Frage ein..." required></textarea>
+        <label for="solution">Lösung:</label>
+        <textarea id="solution" placeholder="Geben Sie hier die Lösung ein..." required></textarea>
+        <button type="submit" class="action">Karte speichern</button>
+      </form>
+      <h2>Übersicht: Karteikarten nach Vorlesung</h2>
+      <div id="cardsOverview"></div>
+    </div>
+
+    <!-- Karten abfragen -->
+    <div id="reviewSection" class="hidden">
+      <h1>Karten abfragen</h1>
+      <div id="singleCard"></div>
+      <button id="nextBtn" class="action">Weiter</button>
+    </div>
+  </div>
+
+  <script>
+    // Globale Variablen
+    let cards = JSON.parse(`{{ cards | safe }}`) || [];
+    let reviewCards = [];
+    let currentReviewIndex = 0;
+    const currentUser = "{{ username }}";
+
+    // Gruppiert Karten nach dem Vorlesungstitel (lecture)
+    function groupCardsByLecture(cards) {
+      const groups = {};
+      cards.forEach(card => {
+        const lecture = card.lecture || currentUser;
+        if (!groups[lecture]) {
+          groups[lecture] = [];
+        }
+        groups[lecture].push(card);
+      });
+      return groups;
+    }
+
+    // Rendert die Gruppenübersicht mit expandierbaren Bereichen
+    function renderCardsOverview() {
+      const overview = document.getElementById("cardsOverview");
+      overview.innerHTML = "";
+      const groups = groupCardsByLecture(cards);
+      const lectures = Object.keys(groups).sort();
+      
+      lectures.forEach(lecture => {
+        const groupDiv = document.createElement("div");
+        groupDiv.className = "group";
+
+        // Gruppenüberschrift
+        const titleDiv = document.createElement("div");
+        titleDiv.className = "group-title";
+        titleDiv.textContent = lecture + " (" + groups[lecture].length + " Karteikarten)";
+        titleDiv.addEventListener("click", () => {
+          contentDiv.style.display = contentDiv.style.display === "none" ? "block" : "none";
+          MathJax.typeset();
+        });
+        groupDiv.appendChild(titleDiv);
+
+        // Gruppeninhalt
+        const contentDiv = document.createElement("div");
+        contentDiv.className = "group-content";
+        contentDiv.style.display = "none";
+
+        groups[lecture].forEach(card => {
+          // Ermittle den globalen Index
+          const globalIndex = cards.findIndex(c =>
+            c.question === card.question &&
+            c.solution === card.solution &&
+            c.lecture === card.lecture &&
+            c.formula === card.formula
+          );
+          const cardDiv = document.createElement("div");
+          cardDiv.className = "card";
+          cardDiv.innerHTML = `
+            <p class="card-question"><strong>Frage:</strong> ${card.question}</p>
+            <div class="card-solution"><strong>Lösung:</strong> ${card.solution}</div>
+            ${ card.formula ? `<div class="card-formula"><strong>Formel:</strong> <span class="mathjax">\\( ${card.formula} \\)</span></div>` : "" }
+            <div class="card-buttons">
+              <button class="edit-btn">Bearbeiten</button>
+              <button class="delete-btn">Löschen</button>
+              <button class="toggle-solution-btn">Lösung anzeigen</button>
+              ${ card.formula ? `<button class="toggle-formula-btn">Formel anzeigen</button>` : "" }
+            </div>
+          `;
+          // Standardmäßig ausblenden
+          const solDiv = cardDiv.querySelector(".card-solution");
+          solDiv.style.display = "none";
+          if(cardDiv.querySelector(".card-formula")){
+            cardDiv.querySelector(".card-formula").style.display = "none";
+          }
+
+          // Toggle-Lösung ein-/ausblenden
+          cardDiv.querySelector(".toggle-solution-btn").addEventListener("click", () => {
+            solDiv.style.display = solDiv.style.display === "none" ? "block" : "none";
+            MathJax.typeset();
+          });
+          
+          // Toggle-Formel (falls vorhanden)
+          if(cardDiv.querySelector(".toggle-formula-btn")){
+            const formDiv = cardDiv.querySelector(".card-formula");
+            formDiv.style.display = "none";
+            cardDiv.querySelector(".toggle-formula-btn").addEventListener("click", () => {
+              formDiv.style.display = formDiv.style.display === "none" ? "block" : "none";
+              MathJax.typeset();
+            });
+          }
+          
+          // Bearbeiten
+          cardDiv.querySelector(".edit-btn").addEventListener("click", () => {
+            document.getElementById("question").value = card.question;
+            document.getElementById("solution").value = card.solution;
+            document.getElementById("cardForm").dataset.editIndex = globalIndex;
+          });
+
+          // Löschen
+          cardDiv.querySelector(".delete-btn").addEventListener("click", () => {
+            if (confirm("Sind Sie sicher, dass Sie diese Karte löschen möchten?")) {
+              const idx = cards.findIndex(c =>
+                c.question === card.question &&
+                c.solution === card.solution &&
+                c.lecture === card.lecture &&
+                c.formula === card.formula
+              );
+              if (idx !== -1) {
+                fetch("/manual_card", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ user: currentUser, question: "", solution: "", editIndex: idx })
+                })
+                .then(response => response.json())
+                .then(data => {
+                  if (!data.error) {
+                    cards = data.cards;
+                    renderCardsOverview();
+                    MathJax.typeset();
+                  }
+                });
+              }
+            }
+          });
+          
+          contentDiv.appendChild(cardDiv);
+        });
+        groupDiv.appendChild(contentDiv);
+        overview.appendChild(groupDiv);
+      });
+      MathJax.typeset();
+    }
+
+    function loadCards() {
+      fetch(`/load_cards?user=${encodeURIComponent(currentUser)}`)
+        .then(response => response.json())
+        .then(data => {
+          if (data.error) {
+            alert("Fehler: " + data.error);
+          } else {
+            cards = data.cards;
+            renderCardsOverview();
+          }
+        });
+    }
+
+    document.getElementById("cardForm").addEventListener("submit", function(e) {
+      e.preventDefault();
+      const questionEl = document.getElementById("question");
+      const solutionEl = document.getElementById("solution");
+      const question = questionEl.value.trim();
+      const solution = solutionEl.value.trim();
+
+      if (question && solution) {
+        const payload = { user: currentUser, question, solution };
+        if (this.dataset.editIndex !== undefined) {
+          payload.editIndex = this.dataset.editIndex;
+        }
+        fetch("/manual_card", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        })
+        .then(response => response.json())
+        .then(data => {
+          if (data.error) {
+            alert("Fehler: " + data.error);
+          } else {
+            cards = data.cards;
+            renderCardsOverview();
+            MathJax.typeset();
+          }
+        });
+        this.reset();
+        delete this.dataset.editIndex;
+      } else {
+        alert("Bitte füllen Sie beide Felder aus.");
+      }
+    });
+
+    function showNotification(message) {
+      const notif = document.getElementById("notification");
+      notif.textContent = message;
+      notif.classList.remove("hidden");
+      setTimeout(() => { notif.classList.add("hidden"); }, 3000);
+    }
+
+    document.getElementById("editModeBtn").addEventListener("click", () => {
+      document.getElementById("editSection").classList.remove("hidden");
+      document.getElementById("reviewSection").classList.add("hidden");
+    });
+
+    document.getElementById("reviewModeBtn").addEventListener("click", () => {
+      document.getElementById("editSection").classList.add("hidden");
+      document.getElementById("reviewSection").classList.remove("hidden");
+      startReview();
+    });
+
+    function startReview() {
+      if (cards.length === 0) {
+        document.getElementById("singleCard").innerHTML = "<p>Keine Karten vorhanden. Bitte erstellen Sie zuerst einige.</p>";
+        return;
+      }
+      reviewCards = cards.slice().sort(() => Math.random() - 0.5);
+      currentReviewIndex = 0;
+      renderReviewCard();
+    }
+
+    function renderReviewCard() {
+      const container = document.getElementById("singleCard");
+      container.innerHTML = "";
+      if (currentReviewIndex >= reviewCards.length) {
+        container.innerHTML = "<p>Alle Karten wurden durchgegangen!</p>";
+        return;
+      }
+      const card = reviewCards[currentReviewIndex];
+      const cardDiv = document.createElement("div");
+      cardDiv.className = "card";
+      cardDiv.innerHTML = `
+        <p class="card-question"><strong>Frage:</strong> ${card.question}</p>
+        <div class="card-solution"><strong>Lösung:</strong> ${card.solution}</div>
+        ${ card.formula ? `<div class="card-formula"><strong>Formel:</strong> <span class="mathjax">\\( ${card.formula} \\)</span></div>` : "" }
+        <p><em>Vorlesung: ${card.lecture || currentUser}</em></p>
+      `;
+      const solDiv = cardDiv.querySelector(".card-solution");
+      solDiv.style.display = "none";
+      if(cardDiv.querySelector(".card-formula")){
+        cardDiv.querySelector(".card-formula").style.display = "none";
+      }
+      cardDiv.addEventListener("click", function() {
+        solDiv.style.display = solDiv.style.display === "none" ? "block" : "none";
+        if(cardDiv.querySelector(".card-formula")){
+          let fDiv = cardDiv.querySelector(".card-formula");
+          fDiv.style.display = fDiv.style.display === "none" ? "block" : "none";
+        }
+        MathJax.typeset();
+      });
+      container.appendChild(cardDiv);
+      MathJax.typeset();
+    }
+
+    document.getElementById("nextBtn").addEventListener("click", () => {
+      currentReviewIndex++;
+      renderReviewCard();
+    });
+
+    // PDF-Upload mit Spinner und Notification
+    document.getElementById("uploadPdfBtn").addEventListener("click", () => {
+      const fileInput = document.getElementById("pdfInput");
+      const file = fileInput.files[0];
+      if (!file) {
+        alert("Bitte wählen Sie eine PDF-Datei aus.");
+        return;
+      }
+      document.getElementById("spinner").style.display = "block";
+      const formData = new FormData();
+      formData.append("pdf_file", file);
+      formData.append("user", currentUser);
+
+      fetch("/upload", {
+        method: "POST",
+        body: formData,
+      })
+      .then(response => response.json())
+      .then(data => {
+        document.getElementById("spinner").style.display = "none";
+        if (data.error) {
+          alert("Fehler: " + data.error);
+        } else {
+          cards = data.cards;
+          renderCardsOverview();
+          showNotification(data.new_count + " neue Karteikarten hinzugefügt.");
+          MathJax.typeset();
+        }
+      })
+      .catch(error => {
+        document.getElementById("spinner").style.display = "none";
+        console.error("Fehler beim Upload:", error);
+        alert("Ein Fehler ist aufgetreten.");
+      });
+    });
+
+    // Beim Laden der Seite: Karten laden und Übersicht anzeigen.
+    loadCards();
+  </script>
+</body>
+</html>
