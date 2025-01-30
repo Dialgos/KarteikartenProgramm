@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Verify Your Account</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f7f9fc;
+      margin: 0;
+      padding: 40px;
+    }
+    .container {
+      max-width: 500px;
+      margin: auto;
+      background: #fff;
+      padding: 20px 30px;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    h2 {
+      color: #2c3e50;
+      margin-bottom: 20px;
+    }
+    input[type="text"] {
+      width: 100%;
+      padding: 10px;
+      margin: 10px 0 20px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      box-sizing: border-box;
+    }
+    button.action {
+      padding: 12px 20px;
+      background-color: #27ae60;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      width: 100%;
+      font-size: 1em;
+      transition: background-color 0.3s;
+    }
+    button.action:hover {
+      background-color: #219150;
+    }
+    .message {
+      margin-top: 10px;
+      font-weight: bold;
+      color: #e74c3c;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <h2>Verify Your Account</h2>
+    <form id="verifyForm" method="POST" action="/verify_and_login">
+      <!-- We'll pre-fill the email from the query string -->
+      <input type="text" name="email" id="emailInput" placeholder="Email" readonly>
+      <input type="text" name="code" id="codeInput" placeholder="Verification Code">
+      <button type="submit" class="action">Verify &amp; Login</button>
+    </form>
+    <div id="verifyMessage" class="message"></div>
+  </div>
+
+  <script>
+    // set the email from ?email=...
+    const params = new URLSearchParams(window.location.search);
+    const userEmail = params.get("email") || "";
+    document.getElementById("emailInput").value = userEmail;
+
+    // If you want to handle errors (e.g. 400) in the same page, you might do a fetch POST
+    // But for simplicity, we do a normal form submit, which either redirects or shows an error.
+
+    // You could do something like:
+    /*
+    document.getElementById("verifyForm").addEventListener("submit", function(e) {
+      e.preventDefault();
+      const formData = new FormData(this);
+      fetch("/verify_and_login", {
+        method: "POST",
+        body: formData
+      })
+      .then(res => {
+        if (res.redirected) {
+          window.location.href = res.url; // user should land on /app/<email>
+        } else {
+          return res.text().then(txt => {
+            document.getElementById("verifyMessage").textContent = txt;
+          });
+        }
+      })
+      .catch(err => {
+        document.getElementById("verifyMessage").textContent = "Error: " + err;
+      });
+    });
+    */
+  </script>
+
+</body>
+</html>

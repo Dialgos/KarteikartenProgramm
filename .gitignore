@@ -2,3 +2,4 @@
 /data
 constants.py
 /__pycache__
+users.db

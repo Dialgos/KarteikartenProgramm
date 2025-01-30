@@ -1,8 +1,8 @@
 <!DOCTYPE html>
-<html lang="de">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Benutzer auswählen / anlegen</title>
+  <title>Login / Register</title>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -20,10 +20,10 @@
       padding: 20px 30px;
       border-radius: 8px;
       box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      margin-bottom: 20px;
     }
     input[type="text"],
-    input[type="password"],
-    select {
+    input[type="password"] {
       width: 100%;
       padding: 10px;
       margin: 10px 0 20px;
@@ -45,84 +45,114 @@
     button.action:hover {
       background-color: #219150;
     }
-    .section {
-      margin-bottom: 30px;
+    .message {
+      margin-top: 10px;
+      font-weight: bold;
+      color: #e74c3c;
     }
   </style>
 </head>
 <body>
+
+  <!-- Sign In Form -->
   <div class="container">
-    <h1>Willkommen zur Karteikarten App</h1>
-    <div class="section">
-      <h2>Neuen Benutzer anlegen</h2>
-      <input type="text" id="newUserName" placeholder="Neuer Benutzername">
-      <input type="password" id="newUserPassword" placeholder="Passwort">
-      <button id="createUserBtn" class="action">Benutzer erstellen</button>
-    </div>
-    <div class="section">
-      <h2>Bestehenden Benutzer auswählen &amp; anmelden</h2>
-      <select id="userSelect">
-        {% for user in users %}
-          <option value="{{ user }}">{{ user }}</option>
-        {% endfor %}
-      </select>
-      <input type="password" id="userPassword" placeholder="Passwort">
-      <button id="selectUserBtn" class="action">Anmelden</button>
-    </div>
+    <h2>Sign In</h2>
+    <input type="text" id="loginEmail" placeholder="Email">
+    <input type="password" id="loginPassword" placeholder="Password">
+    <button id="loginBtn" class="action">Sign In</button>
+    <div id="loginMessage" class="message"></div>
+  </div>
+
+  <!-- Register Form -->
+  <div class="container">
+    <h2>Register</h2>
+    <input type="text" id="regEmail" placeholder="Email">
+    <input type="password" id="regPassword" placeholder="Password">
+    <button id="registerBtn" class="action">Register</button>
+    <div id="registerMessage" class="message"></div>
   </div>
 
   <script>
-    document.getElementById("createUserBtn").addEventListener("click", () => {
-      const newUser = document.getElementById("newUserName").value.trim();
-      const newPass = document.getElementById("newUserPassword").value.trim();
-      if (!newUser || !newPass) {
-        alert("Bitte Benutzername und Passwort eingeben.");
+    // Simple regex for minimal email validation:
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    // 1) SIGN IN
+    document.getElementById("loginBtn").addEventListener("click", () => {
+      const email = document.getElementById("loginEmail").value.trim();
+      const password = document.getElementById("loginPassword").value.trim();
+
+      // Basic check: is it an email format?
+      if (!emailRegex.test(email)) {
+        document.getElementById("loginMessage").textContent = "Please enter a valid email address.";
         return;
       }
-      fetch("/create_user", {
+
+      if (!password) {
+        document.getElementById("loginMessage").textContent = "Please fill in password.";
+        return;
+      }
+
+      // Clear old message
+      document.getElementById("loginMessage").textContent = "";
+
+      fetch("/login", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: newUser, password: newPass })
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ email, password })
       })
-      .then(response => response.json())
+      .then(res => res.json())
       .then(data => {
-        if (!data.error) {
-          const select = document.getElementById("userSelect");
-          const option = document.createElement("option");
-          option.value = data.user;
-          option.textContent = data.user;
-          select.appendChild(option);
-          document.getElementById("newUserName").value = "";
-          document.getElementById("newUserPassword").value = "";
-          alert("Benutzer erfolgreich erstellt!");
-        } else {
-          alert("Fehler: " + data.error);
+        if (data.error) {
+          document.getElementById("loginMessage").textContent = data.error;
+        } else if (data.success) {
+          // redirect to main app
+          window.location.href = "/app/" + encodeURIComponent(email);
         }
+      })
+      .catch(err => {
+        document.getElementById("loginMessage").textContent = "Error: " + err;
       });
     });
 
-    document.getElementById("selectUserBtn").addEventListener("click", () => {
-      const select = document.getElementById("userSelect");
-      const selectedUser = select.value;
-      const password = document.getElementById("userPassword").value.trim();
-      if (!selectedUser || !password) {
-        alert("Bitte wählen Sie einen Benutzer aus und geben Sie das Passwort ein.");
+    // 2) REGISTER
+    document.getElementById("registerBtn").addEventListener("click", () => {
+      const email = document.getElementById("regEmail").value.trim();
+      const password = document.getElementById("regPassword").value.trim();
+
+      // Check email format
+      if (!emailRegex.test(email)) {
+        document.getElementById("registerMessage").textContent = "Please enter a valid email address.";
         return;
       }
-      fetch("/login", {
+
+      if (!password) {
+        document.getElementById("registerMessage").textContent = "Please fill in password.";
+        return;
+      }
+
+      document.getElementById("registerMessage").textContent = "";
+
+      fetch("/register", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: selectedUser, password: password })
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ email, password })
       })
-      .then(response => response.json())
+      .then(res => res.json())
       .then(data => {
-        if (!data.error) {
-          window.location.href = "/app/" + encodeURIComponent(data.user);
+        if (data.error) {
+          document.getElementById("registerMessage").textContent = data.error;
         } else {
-          alert("Fehler: " + data.error);
+          document.getElementById("registerMessage").textContent = "Registered. Opening verify page...";
+          // open verify page in a new window
+          const verifyUrl = "/verify_page?email=" + encodeURIComponent(data.email);
+          window.open(verifyUrl, "_blank");
         }
+      })
+      .catch(err => {
+        document.getElementById("registerMessage").textContent = "Error: " + err;
       });
     });
   </script>
+
 </body>
 </html>

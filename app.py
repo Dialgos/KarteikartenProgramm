@@ -1,237 +1,417 @@
 import os
-import json
+import re
+import smtplib
+import sqlite3
 import traceback
-from flask import Flask, render_template, request, jsonify, redirect, url_for, session
+import json
+import random
+import string
+from datetime import datetime
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+
+from flask import Flask, render_template, request, jsonify, redirect, url_for, session, make_response
+from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from PyPDF2 import PdfReader
 from openai import OpenAI
-import constants  # constants.py enthält openAIAPI
+from werkzeug.security import generate_password_hash, check_password_hash
+import constants  # constants.py must have: openAIAPI, EPW
 
 app = Flask(__name__)
-app.secret_key = 'Ihr_geheimer_Schlüssel'  # bitte anpassen
+app.secret_key = 'Ihr_geheimer_Schlüssel'  # Change this for production
 
-# Initialisiere den OpenAI-Client mit dem API-Key aus constants.
+# -------------------------------------------------
+# 1) Setup OpenAI client
+# -------------------------------------------------
 client = OpenAI(api_key=constants.openAIAPI)
 
-# Verzeichnis, in dem die Benutzerdaten gespeichert werden.
-DATA_DIR = "/home/lukas/KarteikartenProgramm/data"
-if not os.path.exists(DATA_DIR):
-    os.makedirs(DATA_DIR)
+# -------------------------------------------------
+# 2) Setup Flask-Login
+# -------------------------------------------------
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = "login_page"
 
-def get_user_cards(username):
-    """Lädt die Karten des Benutzers (als Liste) aus einer JSON-Datei."""
-    filepath = os.path.join(DATA_DIR, f"{username}.json")
-    if os.path.exists(filepath):
-        try:
-            with open(filepath, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception as e:
-            app.logger.error("Fehler beim Laden der Datei %s: %s", filepath, e)
-    return []
 
-def save_user_cards(username, cards):
-    """Speichert die Karten des Benutzers in einer JSON-Datei."""
-    filepath = os.path.join(DATA_DIR, f"{username}.json")
-    try:
-        with open(filepath, "w", encoding="utf-8") as f:
-            json.dump(cards, f, ensure_ascii=False, indent=2)
-    except Exception as e:
-        app.logger.error("Fehler beim Speichern der Datei %s: %s", filepath, e)
+class User(UserMixin):
+    def __init__(self, user_id, email):
+        self.id = user_id   # Flask-Login expects .id
+        self.email = email  # keep track of email as well
 
-def get_user_credentials(username):
-    """Lädt die Zugangsdaten (z.B. Passwort) aus einer JSON-Datei für den Benutzer."""
-    filepath = os.path.join(DATA_DIR, f"{username}_auth.json")
-    if os.path.exists(filepath):
-        try:
-            with open(filepath, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception as e:
-            app.logger.error("Fehler beim Laden der Auth-Datei %s: %s", filepath, e)
+@login_manager.user_loader
+def load_user(user_id):
+    """
+    Reload user object from user_id stored in the session.
+    """
+    conn = sqlite3.connect('users.db')
+    c = conn.cursor()
+    c.execute("SELECT id, email FROM users WHERE id = ?", (user_id,))
+    row = c.fetchone()
+    conn.close()
+    if row:
+        uid, email = row
+        return User(uid, email)
     return None
 
-def save_user_credentials(username, password):
-    """Speichert die Zugangsdaten für den Benutzer."""
-    filepath = os.path.join(DATA_DIR, f"{username}_auth.json")
-    daten = {"username": username, "password": password}  # In einer echten App unbedingt hashen!
+# -------------------------------------------------
+# 3) Utility: Send Email
+# -------------------------------------------------
+def send_info_via_email(recipient, subject, mailbody):
+    SENDER = 'lukas.strobel@na1583.de'
+    SMTP_SERVER = 'smtp.1und1.de'
+    SMTP_PORT = 465
+    PASSWORD = constants.EPW  # from constants.py
+
+    msg = MIMEMultipart('alternative')
+    msg['Subject'] = subject
+    msg['From'] = SENDER
+    msg['To'] = recipient
+    part = MIMEText(mailbody, 'html')
+    msg.attach(part)
+
     try:
-        with open(filepath, "w", encoding="utf-8") as f:
-            json.dump(daten, f, ensure_ascii=False, indent=2)
+        with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT) as server:
+            server.login(SENDER, PASSWORD)
+            server.sendmail(SENDER, [recipient], msg.as_string())
+        app.logger.info(f"Email sent to {recipient}")
     except Exception as e:
-        app.logger.error("Fehler beim Speichern der Auth-Datei %s: %s", filepath, e)
+        app.logger.error(f"Error sending email: {e}")
 
-def bereinige_generierten_text(text):
-    """
-    Entfernt Markdown-Code-Fences (z. B. ```json ... ```) sowie
-    führende/nachfolgende Leerzeichen.
-    """
-    text = text.strip()
-    if text.startswith("```"):
-        zeilen = text.splitlines()
-        if zeilen[0].startswith("```"):
-            zeilen = zeilen[1:]
-        if zeilen and zeilen[-1].strip() == "```":
-            zeilen = zeilen[:-1]
-        text = "\n".join(zeilen).strip()
-    return text
+    return f"Email sent to {recipient}"
 
-# ---------------------------
-# Routen zur Benutzerverwaltung und Authentifizierung
-# ---------------------------
-
-@app.route("/", methods=["GET"])
-def select_user():
+# -------------------------------------------------
+# 4) Database Helper Functions for karteikarten
+# -------------------------------------------------
+def get_user_id_by_email(email):
     """
-    Zeigt die Benutzer-Auswahlseite an, auf der man einen Benutzer anlegen
-    und auswählen kann.
+    Returns (id) from 'users' table for the given email, or None if not found.
     """
-    users = []
-    for filename in os.listdir(DATA_DIR):
-        if filename.endswith("_auth.json"):
-            users.append(filename[:-10])  # entfernt _auth.json
-    return render_template("user_select.html", users=users)
+    conn = sqlite3.connect("users.db")
+    c = conn.cursor()
+    c.execute("SELECT id FROM users WHERE email = ?", (email,))
+    row = c.fetchone()
+    conn.close()
+    return row[0] if row else None
 
-@app.route("/create_user", methods=["POST"])
-def create_user():
-    daten = request.get_json()
-    username = daten.get("username", "").strip()
-    password = daten.get("password", "").strip()
-    if not username or not password:
-        return jsonify({"error": "Benutzername und Passwort müssen übermittelt werden."}), 400
-    # Überprüfe, ob Benutzer schon existiert
-    if get_user_credentials(username) is not None:
-        return jsonify({"error": "Benutzer existiert bereits."}), 400
-    # Erstelle leere Karten-Datei und speichere Zugangsdaten
-    save_user_cards(username, [])
-    save_user_credentials(username, password)
-    return jsonify({"user": username})
+def get_cards_for_user(user_id):
+    """
+    Return a list of dicts representing all cards for the given user_id.
+    Sorted maybe by created_at or something. We'll do ascending by id for now.
+    """
+    conn = sqlite3.connect("users.db")
+    c = conn.cursor()
+    c.execute("""
+        SELECT id, question, solution, formula, lecture
+        FROM karteikarten
+        WHERE user_id = ?
+        ORDER BY id ASC
+    """, (user_id,))
+    rows = c.fetchall()
+    conn.close()
+
+    cards = []
+    for row in rows:
+        card_id, question, solution, formula, lecture = row
+        cards.append({
+            "id": card_id,
+            "question": question,
+            "solution": solution,
+            "formula": formula if formula else "",
+            "lecture": lecture if lecture else ""
+        })
+    return cards
+
+def create_card(user_id, question, solution, lecture, formula=None):
+    """
+    Insert a new card into 'karteikarten'.
+    Returns the new card's id.
+    """
+    conn = sqlite3.connect("users.db")
+    c = conn.cursor()
+    c.execute("""
+        INSERT INTO karteikarten (user_id, question, solution, formula, lecture, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+    """, (user_id, question, solution, formula, lecture))
+    new_id = c.lastrowid
+    conn.commit()
+    conn.close()
+    return new_id
+
+def update_card(card_id, question, solution, lecture, formula=None):
+    """
+    Update an existing card in 'karteikarten'.
+    """
+    conn = sqlite3.connect("users.db")
+    c = conn.cursor()
+    c.execute("""
+        UPDATE karteikarten
+        SET question = ?, solution = ?, formula = ?, lecture = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+    """, (question, solution, formula, lecture, card_id))
+    conn.commit()
+    conn.close()
+
+def delete_card(card_id):
+    """
+    Delete a card by its ID.
+    """
+    conn = sqlite3.connect("users.db")
+    c = conn.cursor()
+    c.execute("DELETE FROM karteikarten WHERE id = ?", (card_id,))
+    conn.commit()
+    conn.close()
+
+# -------------------------------------------------
+# 5) Routes: Login, Register, Verify
+# -------------------------------------------------
+@app.route("/")
+def login_page():
+    return render_template("user_select.html")
+
+@app.route("/register", methods=["POST"])
+def register():
+    data = request.get_json()
+    email = data.get("email", "").strip().lower()
+    password = data.get("password", "").strip()
+    if not email or not password:
+        return jsonify({"error": "Please provide email and password"}), 400
+
+    conn = sqlite3.connect("users.db")
+    c = conn.cursor()
+    c.execute("SELECT id FROM users WHERE email = ?", (email,))
+    row = c.fetchone()
+    if row:
+        conn.close()
+        return jsonify({"error": "User with that email already exists"}), 400
+
+    code = "".join(random.choices(string.digits, k=6))
+    hashed_password = generate_password_hash(password)
+    c.execute("""
+        INSERT INTO users (email, password_hash, verified, verification_code)
+        VALUES (?, ?, ?, ?)
+    """, (email, hashed_password, 0, code))
+    conn.commit()
+    conn.close()
+
+    subject = "Your Verification Code"
+    mailbody = f"""
+    <p>Thank you for registering!</p>
+    <p>Your verification code is: <strong>{code}</strong></p>
+    <p>Please enter this code on the verification page.</p>
+    """
+    send_info_via_email(email, subject, mailbody)
+
+    return jsonify({"success": True, "email": email})
+
+@app.route("/verify_page")
+def verify_page():
+    user_email = request.args.get("email", "")
+    return render_template("verify_page.html", user_email=user_email)
+
+@app.route("/verify_and_login", methods=["POST"])
+def verify_and_login():
+    email = request.form.get("email", "").strip().lower()
+    code = request.form.get("code", "").strip()
+
+    if not email or not code:
+        return "Missing email or code", 400
+
+    conn = sqlite3.connect("users.db")
+    c = conn.cursor()
+    c.execute("SELECT id, verification_code, verified, password_hash FROM users WHERE email = ?", (email,))
+    row = c.fetchone()
+    if not row:
+        conn.close()
+        return "No such user", 400
+
+    user_id, stored_code, verified, password_hash = row
+
+    if verified == 1:
+        # Already verified => just log in
+        conn.close()
+        user_obj = User(user_id, email)
+        login_user(user_obj)
+        return redirect(url_for("main_app", user_email=email))
+
+    if stored_code != code:
+        conn.close()
+        return "Incorrect code", 400
+
+    # correct code => verify
+    c.execute("""
+        UPDATE users
+        SET verified=1, verification_code=NULL
+        WHERE id=?
+    """, (user_id,))
+    conn.commit()
+    conn.close()
+
+    # auto-login
+    user_obj = User(user_id, email)
+    login_user(user_obj)
+    return redirect(url_for("main_app", user_email=email))
 
 @app.route("/login", methods=["POST"])
 def login():
-    daten = request.get_json()
-    username = daten.get("username", "").strip()
-    password = daten.get("password", "").strip()
-    creds = get_user_credentials(username)
-    if creds is None or creds.get("password") != password:
-        return jsonify({"error": "Ungültige Anmeldedaten."}), 400
-    session["user"] = username
-    return jsonify({"user": username})
+    data = request.get_json()
+    email = data.get("email", "").strip().lower()
+    password = data.get("password", "").strip()
 
-# Routen, die einen angemeldeten Benutzer erfordern:
-def login_required(f):
-    from functools import wraps
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if "user" not in session:
-            return redirect(url_for("select_user"))
-        return f(*args, **kwargs)
-    return decorated_function
+    conn = sqlite3.connect("users.db")
+    c = conn.cursor()
+    c.execute("SELECT id, password_hash, verified FROM users WHERE email = ?", (email,))
+    row = c.fetchone()
+    conn.close()
+    if not row:
+        return jsonify({"error": "User not found"}), 400
 
-@app.route("/app/<username>", methods=["GET"])
+    user_id, password_hash, verified = row
+    if verified == 0:
+        return jsonify({"error": "Please verify your account first"}), 400
+
+    if not check_password_hash(password_hash, password):
+        return jsonify({"error": "Incorrect password"}), 400
+
+    user_obj = User(user_id, email)
+    login_user(user_obj)
+    app.logger.debug(f"User logged in: {email}")
+    return jsonify({"success": True, "email": email})
+
+@app.route("/logout")
 @login_required
-def main_app(username):
+def logout():
+    logout_user()
+    return redirect(url_for("login_page"))
+
+# -------------------------------------------------
+# 6) Main App / Cards
+# -------------------------------------------------
+@app.route("/app/<user_email>", methods=["GET"])
+@login_required
+def main_app(user_email):
     """
-    Zeigt das Hauptinterface (main.html) für den angegebenen Benutzer an.
+    Shows the main interface for the given user_email.
     """
-    # Für zusätzliche Sicherheit prüfen wir, ob der angemeldete User passt.
-    if session.get("user") != username:
-        return redirect(url_for("select_user"))
-    cards = get_user_cards(username)
-    return render_template("main.html", username=username, cards=json.dumps(cards, ensure_ascii=False, indent=2))
+    if current_user.email.lower() != user_email.lower():
+        return redirect(url_for("login_page"))
+
+    # get all cards from DB for the current user
+    all_cards = get_cards_for_user(current_user.id)
+    return render_template("main.html",
+                           username=current_user.email,
+                           cards=json.dumps(all_cards, ensure_ascii=False, indent=2))
 
 @app.route("/load_cards", methods=["GET"])
 def load_cards_route():
     """
-    Liefert die Karten des Benutzers als JSON.
+    Returns the user's cards as JSON. 
+    Must pass ?user=the_user_email
     """
-    username = request.args.get("user", "").strip()
-    if not username:
-        return jsonify({"error": "Kein Benutzer angegeben."}), 400
-    cards = get_user_cards(username)
-    return jsonify({"cards": cards})
+    email = request.args.get("user", "").strip().lower()
+    if not email:
+        return jsonify({"error": "No user specified"}), 400
+
+    # security check
+    if not current_user.is_authenticated or current_user.email.lower() != email:
+        return jsonify({"error": "Not authorized"}), 403
+
+    user_id = current_user.id
+    user_cards = get_cards_for_user(user_id)
+
+    response = jsonify({"cards": user_cards})
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
 
 @app.route("/manual_card", methods=["POST"])
 def manual_card():
     """
-    Fügt manuell eine Karte hinzu, bearbeitet oder löscht sie.
-    Erwartet JSON-Daten: {user, question, solution, [editIndex]}.
-    Zum Löschen einer Karte müssen Frage und Lösung leer sein.
-    Beim Bearbeiten wird, falls vorhanden, das Feld "formula" beibehalten.
+    Add/edit/delete a card in DB.
+    JSON: { user, question, solution, [editIndex or DB card id], formula? }
+    To delete: question/solution empty
     """
-    daten = request.get_json()
-    username = daten.get("user", "").strip()
-    if not username:
-        return jsonify({"error": "Kein Benutzer angegeben."}), 400
+    data = request.get_json()
+    email = data.get("user", "").strip().lower()
+    if not email:
+        return jsonify({"error": "No user specified"}), 400
 
-    # Karten laden
-    karten = get_user_cards(username)
-    edit_index = daten.get("editIndex")
+    if not current_user.is_authenticated or current_user.email.lower() != email:
+        return jsonify({"error": "Not authorized"}), 403
 
-    # Löschen: Wenn Frage und Lösung leer sind und ein Index übergeben wurde.
+    # Load all user cards
+    user_id = current_user.id
+    all_cards = get_cards_for_user(user_id)
+
+    edit_index = data.get("editIndex")  # This is the front-end's index in 'cards' array
+    question = data.get("question", "").strip()
+    solution = data.get("solution", "").strip()
+
+    # We'll match the card in the DB by ID, not index. So let's do a safe approach:
+    # The front-end, for each card, includes 'id'. We'll read data.get("id") if we want direct DB references.
+
+    # If the front-end doesn't have the DB ID, let's use the index approach for now:
     if edit_index is not None:
         try:
             edit_index = int(edit_index)
-            if edit_index < 0 or edit_index >= len(karten):
-                return jsonify({"error": "Ungültiger Index."}), 400
+            if edit_index < 0 or edit_index >= len(all_cards):
+                return jsonify({"error": "Invalid card index"}), 400
 
-            frage = daten.get("question", "").strip()
-            loesung = daten.get("solution", "").strip()
-
-            if frage == "" and loesung == "":
-                # Karte löschen
-                karten.pop(edit_index)
+            card_db_id = all_cards[edit_index]["id"]
+            original_card = all_cards[edit_index]
+            if question == "" and solution == "":
+                # Delete
+                delete_card(card_db_id)
             else:
-                # Beim Bearbeiten: Falls bereits ein "formula"-Feld existiert, beibehalten.
-                original_karte = karten[edit_index]
-                lecture = original_karte.get("lecture", username)
-                formula = original_karte.get("formula", "")
-                # Setze die bearbeitete Karte – hier wird "formula" übernommen, wenn vorhanden.
-                card_obj = {
-                    "question": frage,
-                    "solution": loesung,
-                    "lecture": lecture
-                }
-                if formula:
-                    card_obj["formula"] = formula
-                karten[edit_index] = card_obj
+                lecture = original_card.get("lecture", email)
+                formula = original_card.get("formula", "")
+                update_card(card_db_id, question, solution, lecture, formula)
         except Exception as e:
-            return jsonify({"error": "Fehler beim Bearbeiten/Löschen der Karte: " + str(e)}), 400
+            return jsonify({"error": f"Error editing/deleting card: {e}"}), 400
     else:
-        # Neue Karte hinzufügen: Falls keine "formula" vom Formular kommt, setzen wir sie nicht (kann später hinzugefügt werden)
-        frage = daten.get("question", "").strip()
-        loesung = daten.get("solution", "").strip()
-        if not (frage and loesung):
-            return jsonify({"error": "Bitte beide Felder ausfüllen."}), 400
-        # Neue Karten erhalten als "lecture" den aktuellen Benutzernamen
-        karten.append({"question": frage, "solution": loesung, "lecture": username})
-    
-    save_user_cards(username, karten)
-    return jsonify({"cards": karten})
+        # new card
+        if not (question and solution):
+            return jsonify({"error": "Please provide both question and solution"}), 400
+        # lecture default to email, or you can pass data
+        lecture = data.get("lecture", email)
+        create_card(user_id, question, solution, lecture, formula=None)
+
+    # return updated list
+    updated_cards = get_cards_for_user(user_id)
+    return jsonify({"cards": updated_cards})
 
 @app.route("/upload", methods=["POST"])
 def upload_pdf():
-    username = request.form.get("user", "").strip()
-    if not username:
-        return jsonify({"error": "Kein Benutzer angegeben."}), 400
+    """
+    Upload a PDF, parse it, generate index-cards via OpenAI, store them in DB.
+    Return new card list as JSON.
+    """
+    email = request.form.get("user", "").strip().lower()
+    if not email:
+        return jsonify({"error": "No user specified"}), 400
+
+    if not current_user.is_authenticated or current_user.email.lower() != email:
+        return jsonify({"error": "Not authorized"}), 403
 
     if "pdf_file" not in request.files:
-        return jsonify({"error": "Keine Datei übermittelt!"}), 400
+        return jsonify({"error": "No file uploaded"}), 400
 
     file = request.files["pdf_file"]
     if file.filename == "":
-        return jsonify({"error": "Keine Datei ausgewählt!"}), 400
+        return jsonify({"error": "No file selected"}), 400
+
+    user_id = current_user.id
 
     try:
-        # PDF-Text extrahieren
         reader = PdfReader(file)
         voller_text = ""
-        for seite in reader.pages:
-            seiten_text = seite.extract_text()
-            if seiten_text:
-                voller_text += seiten_text + "\n"
+        for page in reader.pages:
+            page_text = page.extract_text()
+            if page_text:
+                voller_text += page_text + "\n"
 
-        # Vorlesungstitel extrahieren
         lecture_name, _ = os.path.splitext(file.filename)
 
-        # Erweiterter Prompt
         prompt = (
             "Extrahiere die wichtigsten Lernpunkte aus folgendem Vorlesungstext und generiere Index-Karten. "
             "Falls der Text mathematische Gleichungen enthält oder Gleichungen teilweise unvollständig sind, kombiniere "
@@ -240,16 +420,13 @@ def upload_pdf():
             "LaTeX-Befehle. Jede Karte soll ein JSON-Objekt mit den Schlüsseln \"question\", \"solution\" und, falls vorhanden, "
             "\"formula\" sein.\n\n"
             "Vorlesungstext:\n" + voller_text + "\n\n"
-            "Gib das Ergebnis als JSON-Liste zurück, z. B. so:\n"
+            "Gib das Ergebnis als JSON-Liste zurück, z.B.:\n"
             "[{\"question\": \"Was ist ...?\", \"solution\": \"Es ist ...\", \"formula\": \"\\\\(E=mc^2\\\\)\"}, "
             "{\"question\": \"Wie funktioniert ...?\", \"solution\": \"So funktioniert es ...\"}]"
         )
 
-        app.logger.debug("An OpenAI gesendetes Prompt:")
-        app.logger.debug(prompt)
-
         completion = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-4o-mini",  # or whichever model you want
             messages=[
                 {"role": "system", "content": "Du bist ein hilfreicher Assistent."},
                 {"role": "user", "content": prompt}
@@ -257,9 +434,8 @@ def upload_pdf():
         )
 
         generierter_text = completion.choices[0].message.content
-        app.logger.debug("Roh generierter Text von OpenAI:")
-        app.logger.debug(generierter_text)
 
+        import re
         def extract_json(text):
             start = text.find("```json")
             if start != -1:
@@ -270,42 +446,81 @@ def upload_pdf():
             return text.strip()
 
         cleaned_text = extract_json(generierter_text)
-        
-        # Korrigiere unzureichend maskierte Backslashes in LaTeX-Ausdrücken:
-        import re
         cleaned_text = re.sub(r'(?<!\\)\\\(', r'\\\\(', cleaned_text)
         cleaned_text = re.sub(r'(?<!\\)\\\)', r'\\\\)', cleaned_text)
-        
-        app.logger.debug("Bereinigter generierter Text:")
-        app.logger.debug(cleaned_text)
 
         try:
             karten_json = json.loads(cleaned_text)
-            app.logger.debug("Erfolgreich geparstes JSON:")
-            app.logger.debug(karten_json)
         except Exception as json_err:
-            app.logger.error("Fehler beim Parsen des generierten JSON:")
-            app.logger.error(traceback.format_exc())
+            app.logger.error("Error parsing JSON: %s", traceback.format_exc())
             return jsonify({
                 "error": "Fehler beim Parsen des generierten JSON.",
                 "generated_text": cleaned_text,
                 "exception": str(json_err)
             }), 500
 
+        # Insert each card in DB
+        new_count = 0
         for karte in karten_json:
-            karte["lecture"] = lecture_name
+            q = karte.get("question", "").strip()
+            s = karte.get("solution", "").strip()
+            f = karte.get("formula", "").strip() if karte.get("formula") else ""
+            if not q or not s:
+                continue
+            create_card(user_id, q, s, lecture_name, formula=f)
+            new_count += 1
 
-        existierende_karten = get_user_cards(username)
-        neue_karten = existierende_karten + karten_json
-        save_user_cards(username, neue_karten)
+        updated_cards = get_cards_for_user(user_id)
+        return jsonify({"cards": updated_cards, "new_count": new_count})
 
-        return jsonify({"cards": neue_karten, "new_count": len(karten_json)})
-    
     except Exception as e:
-        app.logger.error("Fehler beim PDF-Upload und -Verarbeiten:")
-        app.logger.error(traceback.format_exc())
+        app.logger.error("Error in PDF upload: %s", traceback.format_exc())
         return jsonify({"error": str(e)}), 500
 
+@app.route("/export_anki", methods=["GET"])
+@login_required
+def export_anki():
+    email = request.args.get("user", "").strip().lower()
+    if not email:
+        return jsonify({"error": "No user specified"}), 400
 
-if __name__ == '__main__':
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    if current_user.email.lower() != email:
+        return jsonify({"error": "Not authorized"}), 403
+
+    lecture = request.args.get("lecture", "").strip()
+    user_id = current_user.id
+
+    all_cards = get_cards_for_user(user_id)
+    if not lecture:
+        lecture = "all"
+    if lecture.lower() != "all":
+        all_cards = [c for c in all_cards if c.get("lecture", "").lower() == lecture.lower()]
+
+    lines = []
+    for card in all_cards:
+        q = card["question"].replace("\t", "    ").replace("\n", "<br>")
+        s = card["solution"].replace("\t", "    ").replace("\n", "<br>")
+        f_raw = card.get("formula", "").replace("\t", "    ").replace("\n", "<br>")
+        if f_raw.strip():
+            # remove \(\) from formula
+            latex_inner = f_raw.replace("\\(", "").replace("\\)", "").strip()
+            latex_formula = f"$$ {latex_inner} $$"
+        else:
+            latex_formula = ""
+        if latex_formula:
+            back_field = f"{s}<br>{latex_formula}"
+        else:
+            back_field = s
+
+        lect = card.get("lecture", "").replace("\t", " ").replace("\n", " ")
+        line = f"{q}\t{back_field}\t{lect}"
+        lines.append(line)
+
+    file_content = "\n".join(lines)
+    resp = make_response(file_content)
+    resp.headers["Content-Disposition"] = f'attachment; filename=anki_{lecture}.txt'
+    resp.mimetype = "text/tab-separated-values"
+    return resp
+
+if __name__ == "__main__":
+    app.run(debug=True, host="0.0.0.0", port=5000)
